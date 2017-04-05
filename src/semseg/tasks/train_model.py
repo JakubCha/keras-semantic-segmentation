@@ -13,6 +13,28 @@ RMS_PROP = 'rms_prop'
 TRAIN_MODEL = 'train_model'
 
 
+def get_initial_epoch(log_path):
+    """Get initial_epoch from the last line in the log csv file."""
+    initial_epoch = 0
+    if isfile(log_path):
+        with open(log_path) as log_file:
+            line_ind = 0
+            for line_ind, _ in enumerate(log_file):
+                pass
+            initial_epoch = line_ind
+
+    return initial_epoch
+
+
+def get_lr(epoch, lr_schedule):
+    for epoch_thresh, lr in lr_schedule:
+        if epoch >= epoch_thresh:
+            curr_lr = lr
+        else:
+            break
+    return curr_lr
+
+
 def train_model(run_path, model, sync_results, options, generator):
     """Train a model according to options using generator.
 
@@ -37,28 +59,18 @@ def train_model(run_path, model, sync_results, options, generator):
         shuffle=True, augment=True, normalize=True)
 
     if options.optimizer == ADAM:
-        optimizer = Adam(options.init_lr)
+        optimizer = Adam(lr=options.init_lr)
     elif options.optimizer == RMS_PROP:
-        optimizer = RMSprop(options.init_lr)
+        optimizer = RMSprop(lr=options.init_lr)
 
     model.compile(
-        loss='categorical_crossentropy',
-        optimizer=optimizer,
-        metrics=['accuracy'])
+        optimizer, 'categorical_crossentropy', metrics=['accuracy'])
 
     log_path = join(run_path, 'log.txt')
-
-    initial_epoch = 0
-    if isfile(log_path):
-        with open(log_path) as log_file:
-            line_ind = 0
-            for line_ind, _ in enumerate(log_file):
-                pass
-            initial_epoch = line_ind
+    initial_epoch = get_initial_epoch(log_path)
 
     model_checkpoint = ModelCheckpoint(
         filepath=join(run_path, 'model.h5'), period=1, save_weights_only=True)
-
     best_model_checkpoint = ModelCheckpoint(
         filepath=join(run_path, 'best_model.h5'), save_best_only=True,
         save_weights_only=True)
@@ -71,14 +83,8 @@ def train_model(run_path, model, sync_results, options, generator):
         callbacks.append(reduce_lr)
 
     if options.lr_schedule:
-        def get_lr(epoch):
-            for epoch_thresh, lr in options.lr_schedule:
-                if epoch >= epoch_thresh:
-                    curr_lr = lr
-                else:
-                    break
-            return curr_lr
-        lr_scheduler = LearningRateScheduler(get_lr)
+        lr_scheduler = LearningRateScheduler(
+            lambda lr: get_lr(lr, options.lr_schedule))
         callbacks.append(lr_scheduler)
 
     sync_results_callback = LambdaCallback(
@@ -88,8 +94,8 @@ def train_model(run_path, model, sync_results, options, generator):
     model.fit_generator(
         train_gen,
         initial_epoch=initial_epoch,
-        samples_per_epoch=options.samples_per_epoch,
-        nb_epoch=options.nb_epoch,
+        steps_per_epoch=options.steps_per_epoch,
+        epochs=options.epochs,
         validation_data=validation_gen,
-        nb_val_samples=options.nb_val_samples,
+        validation_steps=options.validation_steps,
         callbacks=callbacks)
