@@ -1,5 +1,5 @@
 {
-    "batch_size": 1,
+    "batch_size": 8,
     "git_commit": null,
     "dataset_name": "potsdam",
     "generator_name": "numpy",
